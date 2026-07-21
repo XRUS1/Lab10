@@ -76,7 +76,6 @@
             const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
             reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
             reticle.visible = false;
-            // IMPORTANTE: Desactivar auto-update para que la matriz manual funcione
             reticle.matrixAutoUpdate = false;
             scene.add(reticle);
 
@@ -130,11 +129,18 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // ========== EVENTO SELECT: COLOCAR EL LEÑADOR ==========
+        // ========== EVENTO SELECT: COLOCAR/MOVER EL LEÑADOR ==========
         function onSelect() {
             if (reticle.visible && lenador) {
-                lenador.position.setFromMatrixPosition(reticle.matrix);
-                lenador.quaternion.setFromRotationMatrix(reticle.matrix);
+                // Crear una matriz temporal para descomponer posición y rotación
+                const position = new THREE.Vector3();
+                const quaternion = new THREE.Quaternion();
+                const scale = new THREE.Vector3();
+                
+                reticle.matrix.decompose(position, quaternion, scale);
+                
+                lenador.position.copy(position);
+                lenador.quaternion.copy(quaternion);
                 lenador.visible = true;
             }
         }
@@ -168,7 +174,6 @@
 
                             if (hitPose) {
                                 reticle.visible = true;
-                                // Aplicar la matriz de transformación del hit test
                                 reticle.matrix.fromArray(hitPose.transform.matrix);
                             }
                         } else {
