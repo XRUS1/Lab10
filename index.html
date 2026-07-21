@@ -1,215 +1,173 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <title>AR Hit Test - Leñador Animado</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <link type="text/css" rel="stylesheet" href="main.css">
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            touch-action: none;
-        }
-        #info {
-            position: absolute;
-            top: 10px;
-            width: 100%;
-            text-align: center;
-            color: white;
-            font-family: monospace;
-            z-index: 100;
-            pointer-events: none;
-            text-shadow: 1px 1px 2px black;
-        }
-    </style>
-</head>
-<body>
+	<head>
+		<title>three.js webgl - equirectangular video panorama</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="main.css">
+		<style>
+			body {
+				touch-action: none;
+			}
+		</style>
+	</head>
+	<body>
 
-    <div id="info">Toca la pantalla para colocar al leñador</div>
+		<!-- Import maps polyfill -->
+		<!-- Remove this when import maps will be widely supported -->
+		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
-    <!-- Import maps polyfill -->
-    <script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
 
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "./build/three.module.js",
-                "three/addons/": "./jsm/"
-            }
-        }
-    </script>
+		<script type="module">
 
-    <script type="module">
+			import * as THREE from 'three';
+			import { ARButton } from 'three/addons/webxr/ARButton.js';
+			
+			//Add this for stats animation
+			import Stats from 'three/addons/libs/stats.module.js';
+			import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        import * as THREE from 'three';
-        import { ARButton } from 'three/addons/webxr/ARButton.js';
-        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
-        let camera, scene, renderer;
-        let controller;
-        let reticle;
-        let lenador;
-        let mixer;
-        let hitTestSource = null;
-        let hitTestSourceRequested = false;
+			//
+			let camera, scene, renderer, stats; 
+			let controller;
 
-        const clock = new THREE.Clock();
+			//Add clock
+			const clock = new THREE.Clock();
 
-        init();
-        animate();
+			//Add Mixer
+			let mixer;
 
-        function init() {
+			init();
+			animate();
 
-            const container = document.createElement('div');
-            document.body.appendChild(container);
+			function init() {
 
-            // Escena
-            scene = new THREE.Scene();
+				const container = document.createElement( 'div' );
+				document.body.appendChild( container );
 
-            // Cámara
-            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+				scene = new THREE.Scene();
 
-            // Luces
-            scene.add(new THREE.HemisphereLight(0xa5a5a5, 0x898989, 3));
+				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 20 );
 
-            const light = new THREE.DirectionalLight(0xffffff, 3);
-            light.position.set(1, 1, 1).normalize();
-            scene.add(light);
+				scene.add( new THREE.HemisphereLight( 0xa5a5a5, 0x898989, 3 ) );
 
-            // ========== RETÍCULA ==========
-            const reticleGeometry = new THREE.RingGeometry(0.05, 0.07, 32);
-            reticleGeometry.rotateX(-Math.PI / 2);
-            const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-            reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
-            reticle.visible = false;
-            scene.add(reticle);
+				const light = new THREE.DirectionalLight( 0xffffff, 3 );
+				light.position.set( 1, 1, 1 ).normalize();
+				scene.add( light );
+				//Load GLTF Model
 
-            // ========== CARGAR EL LEÑADOR ==========
-            const loader = new FBXLoader();
-            loader.load('./models/fbx/Lenador.fbx', function (object) {
+				new GLTFLoader()
+					.setPath( 'models/gltf/' )
+					.load( 'Nave.gltf', function ( gltf ) {
 
-                lenador = object;
+						gltf.scene.scale.set(.003, .003, .003);
+						gltf.scene.position.x = -0.8;
+						gltf.scene.position.y = 0.3;
+						gltf.scene.position.z = -1.5;
 
-                // Escala inicial
-                lenador.scale.set(0.004, 0.004, 0.004);
-                lenador.visible = false;
+						scene.add( gltf.scene );
 
-                // Configurar el mixer de animación
-                mixer = new THREE.AnimationMixer(lenador);
+					} );
 
-                // Reproducir la animación (índice 4 como en el código original)
-                if (lenador.animations && lenador.animations.length > 4) {
-                    const action = mixer.clipAction(lenador.animations[4]);
-                    action.play();
-                } else if (lenador.animations && lenador.animations.length > 0) {
-                    const action = mixer.clipAction(lenador.animations[0]);
-                    action.play();
-                }
 
-                // Configurar sombras en el mesh
-                lenador.traverse(function (child) {
-                    if (child.isMesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
-                });
+				// Load FBX Model and Animation
 
-                scene.add(lenador);
+				const loader = new FBXLoader();
+				loader.load( 'models/fbx/Lenador.fbx', function ( object ) {
 
-            });
+					// Add scale and transform
 
-            // ========== RENDERER ==========
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.xr.enabled = true;
-            container.appendChild(renderer.domElement);
+					object.scale.set(.004, .004, .004);
+					object.position.x = 0.8;
+					object.position.y = -0.5;
+					object.position.z = -1.5;
+//					object.rotation.y = Math.PI / 2;   // Rotando 90
 
-            // ========== BOTÓN AR ==========
-            document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
+					mixer = new THREE.AnimationMixer( object );
 
-            // ========== CONTROLADOR PARA EVENTO DE SELECCIÓN ==========
-            controller = renderer.xr.getController(0);
-            controller.addEventListener('select', onSelect);
-            scene.add(controller);
+					const action = mixer.clipAction( object.animations[ 4] );
+					action.play();
 
-            // ========== EVENTO DE INICIO DE SESIÓN ==========
-            renderer.xr.addEventListener('sessionstart', function () {
-                const session = renderer.xr.getSession();
+					object.traverse( function ( child ) {
 
-                // Crear el hit test source cuando inicia la sesión
-                session.requestReferenceSpace('viewer').then(function (viewerSpace) {
-                    session.requestHitTestSource({ space: viewerSpace }).then(function (source) {
-                        hitTestSource = source;
-                    });
-                });
+						if ( child.isMesh ) {
 
-                hitTestSourceRequested = true;
-            });
+							child.castShadow = true;
+							child.receiveShadow = true;
 
-            // ========== EVENTO DE FIN DE SESIÓN ==========
-            renderer.xr.addEventListener('sessionend', function () {
-                hitTestSource = null;
-                hitTestSourceRequested = false;
-            });
+						}
 
-            // ========== REDIMENSIONAR VENTANA ==========
-            window.addEventListener('resize', onWindowResize);
+					} );
 
-        }
+					scene.add( object );
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+				} );
 
-        // ========== EVENTO SELECT: COLOCAR EL LEÑADOR ==========
-        function onSelect() {
-            if (reticle.visible && lenador) {
-                // Copiar la posición y rotación de la retícula al leñador
-                lenador.position.setFromMatrixPosition(reticle.matrix);
-                lenador.quaternion.setFromRotationMatrix(reticle.matrix);
-                lenador.visible = true;
-            }
-        }
+				//
 
-        // ========== LOOP DE ANIMACIÓN ==========
-        function animate() {
-            renderer.setAnimationLoop(render);
-        }
+				renderer = new THREE.WebGLRenderer( { antialias: true, alpha: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.xr.enabled = true;
+				container.appendChild( renderer.domElement );
 
-        function render(timestamp, frame) {
-            const delta = clock.getDelta();
+				// ADD stats
 
-            // Actualizar animación del leñador
-            if (mixer) mixer.update(delta);
+				stats = new Stats();
+				container.appendChild( stats.dom );
 
-            // ========== HIT TEST ==========
-            if (frame) {
-                const referenceSpace = renderer.xr.getReferenceSpace();
+				//
 
-                if (hitTestSource) {
-                    const hitTestResults = frame.getHitTestResults(hitTestSource);
+				document.body.appendChild( ARButton.createButton( renderer ) );
 
-                    if (hitTestResults.length > 0) {
-                        const hit = hitTestResults[0];
-                        const hitPose = hit.getPose(referenceSpace);
 
-                        if (hitPose) {
-                            reticle.visible = true;
-                            reticle.matrix.fromArray(hitPose.transform.matrix);
-                        }
-                    } else {
-                        reticle.visible = false;
-                    }
-                }
-            }
 
-            renderer.render(scene, camera);
-        }
+				//
 
-    </script>
-</body>
+				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			// 
+
+			function animate() {
+
+				const delta = clock.getDelta();
+
+				if ( mixer ) mixer.update( delta );
+
+				stats.update();
+
+				render();
+
+			}
+
+			renderer.setAnimationLoop( animate );
+
+			function render() {
+
+				renderer.render( scene, camera );
+
+			}
+		</script>
+	</body>
 </html>
