@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>AR Hit Test - Leñador Animado</title>
+    <title>AR Hit Test - DEBUG</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
     <link type="text/css" rel="stylesheet" href="main.css">
@@ -21,14 +21,28 @@
             z-index: 100;
             pointer-events: none;
             text-shadow: 1px 1px 2px black;
+            font-size: 14px;
+        }
+        #debug {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            max-width: 90%;
         }
     </style>
 </head>
 <body>
 
     <div id="info">Toca la pantalla para colocar al leñador</div>
+    <div id="debug">Iniciando...</div>
 
-    <!-- Import maps polyfill -->
     <script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
     <script type="importmap">
@@ -52,6 +66,12 @@
         let lenador;
         let mixer;
         let hitTestSource = null;
+        let debugInfo = document.getElementById('debug');
+
+        function log(msg) {
+            console.log(msg);
+            debugInfo.innerHTML += '<br>' + msg;
+        }
 
         const clock = new THREE.Clock();
 
@@ -59,22 +79,21 @@
         animate();
 
         function init() {
+            log('=== INIT ===');
 
             const container = document.createElement('div');
             document.body.appendChild(container);
 
-            // Escena
             scene = new THREE.Scene();
 
-            // Cámara
             camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+            log('Camara creada');
 
-            // Luces
             scene.add(new THREE.HemisphereLight(0xa5a5a5, 0x898989, 3));
-
             const light = new THREE.DirectionalLight(0xffffff, 3);
             light.position.set(1, 1, 1).normalize();
             scene.add(light);
+            log('Luces creadas');
 
             // ========== RETÍCULA ==========
             const reticleGeometry = new THREE.RingGeometry(0.05, 0.07, 32);
@@ -83,40 +102,56 @@
             reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
             reticle.visible = false;
             scene.add(reticle);
+            log('Reticula creada (verde)');
+
+            // ========== CUBO DE PRUEBA (visible inmediatamente) ==========
+            const cubeGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+            const cubeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const cube = new THREE.Mesh(cubeGeo, cubeMat);
+            cube.position.set(0, 0, -0.5);
+            scene.add(cube);
+            log('Cubo rojo de prueba creado en (0, 0, -0.5)');
 
             // ========== CARGAR EL LEÑADOR ==========
+            log('Cargando Lenador.fbx...');
             const loader = new FBXLoader();
-            loader.load('./models/fbx/Lenador.fbx', function (object) {
+            loader.load('./models/fbx/Lenador.fbx', 
+                function (object) {
+                    log('Lenador CARGADO exitosamente');
+                    lenador = object;
+                    lenador.scale.set(0.004, 0.004, 0.004);
+                    lenador.visible = false;
 
-                lenador = object;
-
-                // Escala inicial
-                lenador.scale.set(0.004, 0.004, 0.004);
-                lenador.visible = false;
-
-                // Configurar el mixer de animación
-                mixer = new THREE.AnimationMixer(lenador);
-
-                // Reproducir la animación (índice 4 como en el código original)
-                if (lenador.animations && lenador.animations.length > 4) {
-                    const action = mixer.clipAction(lenador.animations[4]);
-                    action.play();
-                } else if (lenador.animations && lenador.animations.length > 0) {
-                    const action = mixer.clipAction(lenador.animations[0]);
-                    action.play();
-                }
-
-                // Configurar sombras en el mesh
-                lenador.traverse(function (child) {
-                    if (child.isMesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
+                    mixer = new THREE.AnimationMixer(lenador);
+                    if (lenador.animations && lenador.animations.length > 4) {
+                        const action = mixer.clipAction(lenador.animations[4]);
+                        action.play();
+                        log('Animacion 4 iniciada');
+                    } else if (lenador.animations && lenador.animations.length > 0) {
+                        const action = mixer.clipAction(lenador.animations[0]);
+                        action.play();
+                        log('Animacion 0 iniciada (fallback)');
+                    } else {
+                        log('ERROR: No hay animaciones en el modelo');
                     }
-                });
 
-                scene.add(lenador);
+                    lenador.traverse(function (child) {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
 
-            });
+                    scene.add(lenador);
+                    log('Lenador agregado a la escena');
+                },
+                function (progress) {
+                    // Progreso de carga
+                },
+                function (error) {
+                    log('ERROR cargando Lenador.fbx: ' + error.message);
+                }
+            );
 
             // ========== RENDERER ==========
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -124,18 +159,31 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.xr.enabled = true;
             container.appendChild(renderer.domElement);
+            log('Renderer creado, XR habilitado');
 
             // ========== BOTÓN AR ==========
-            document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
+            const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
+            document.body.appendChild(arButton);
+            log('Boton AR creado');
 
-            // ========== CONTROLADOR PARA EVENTO DE SELECCIÓN ==========
+            // ========== CONTROLADOR ==========
             controller = renderer.xr.getController(0);
             controller.addEventListener('select', onSelect);
             scene.add(controller);
+            log('Controlador XR creado');
 
-            // ========== REDIMENSIONAR VENTANA ==========
+            // ========== EVENTO DE INICIO DE SESIÓN ==========
+            renderer.xr.addEventListener('sessionstart', function () {
+                log('=== SESION AR INICIADA ===');
+            });
+
+            renderer.xr.addEventListener('sessionend', function () {
+                log('=== SESION AR TERMINADA ===');
+                hitTestSource = null;
+            });
+
             window.addEventListener('resize', onWindowResize);
-
+            log('Init completado');
         }
 
         function onWindowResize() {
@@ -144,38 +192,45 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // ========== EVENTO SELECT: COLOCAR EL LEÑADOR ==========
         function onSelect() {
+            log('EVENTO SELECT (toque detectado)');
             if (reticle.visible && lenador) {
                 lenador.position.setFromMatrixPosition(reticle.matrix);
                 lenador.quaternion.setFromRotationMatrix(reticle.matrix);
                 lenador.visible = true;
+                log('Lenador COLOCADO en reticula');
+            } else {
+                log('Select ignorado: reticula visible=' + reticle.visible + ', lenador=' + (lenador ? 'OK' : 'null'));
             }
         }
 
-        // ========== LOOP DE ANIMACIÓN CON HIT TEST ==========
         function animate() {
             renderer.setAnimationLoop(function (time, frame) {
                 
                 const delta = clock.getDelta();
-
-                // Actualizar animación del leñador
                 if (mixer) mixer.update(delta);
 
                 // ========== HIT TEST ==========
                 if (frame) {
-                    
                     const referenceSpace = renderer.xr.getReferenceSpace();
                     const session = renderer.xr.getSession();
 
+                    // Crear hit test source la primera vez
                     if (hitTestSource === null && session !== null) {
+                        log('Creando hitTestSource...');
                         session.requestReferenceSpace('viewer').then(function (viewerSpace) {
                             session.requestHitTestSource({ space: viewerSpace }).then(function (source) {
                                 hitTestSource = source;
+                                log('hitTestSource CREADO');
+                            }).catch(function(err) {
+                                log('ERROR creando hitTestSource: ' + err.message);
                             });
+                        }).catch(function(err) {
+                            log('ERROR requestReferenceSpace viewer: ' + err.message);
                         });
                     }
 
+                    // Ejecutar hit test
                     if (hitTestSource) {
                         const hitTestResults = frame.getHitTestResults(hitTestSource);
 
@@ -186,6 +241,10 @@
                             if (hitPose) {
                                 reticle.visible = true;
                                 reticle.matrix.fromArray(hitPose.transform.matrix);
+                                // Solo loguear cada 60 frames para no saturar
+                                if (Math.floor(time) % 60 === 0) {
+                                    log('Reticula visible (superficie detectada)');
+                                }
                             }
                         } else {
                             reticle.visible = false;
