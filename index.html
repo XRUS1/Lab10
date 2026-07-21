@@ -52,7 +52,6 @@
         let lenador;
         let mixer;
         let hitTestSource = null;
-        let hitTestSourceRequested = false;
 
         const clock = new THREE.Clock();
 
@@ -134,26 +133,6 @@
             controller.addEventListener('select', onSelect);
             scene.add(controller);
 
-            // ========== EVENTO DE INICIO DE SESIÓN ==========
-            renderer.xr.addEventListener('sessionstart', function () {
-                const session = renderer.xr.getSession();
-
-                // Crear el hit test source cuando inicia la sesión
-                session.requestReferenceSpace('viewer').then(function (viewerSpace) {
-                    session.requestHitTestSource({ space: viewerSpace }).then(function (source) {
-                        hitTestSource = source;
-                    });
-                });
-
-                hitTestSourceRequested = true;
-            });
-
-            // ========== EVENTO DE FIN DE SESIÓN ==========
-            renderer.xr.addEventListener('sessionend', function () {
-                hitTestSource = null;
-                hitTestSourceRequested = false;
-            });
-
             // ========== REDIMENSIONAR VENTANA ==========
             window.addEventListener('resize', onWindowResize);
 
@@ -168,46 +147,54 @@
         // ========== EVENTO SELECT: COLOCAR EL LEÑADOR ==========
         function onSelect() {
             if (reticle.visible && lenador) {
-                // Copiar la posición y rotación de la retícula al leñador
                 lenador.position.setFromMatrixPosition(reticle.matrix);
                 lenador.quaternion.setFromRotationMatrix(reticle.matrix);
                 lenador.visible = true;
             }
         }
 
-        // ========== LOOP DE ANIMACIÓN ==========
+        // ========== LOOP DE ANIMACIÓN CON HIT TEST ==========
         function animate() {
-            renderer.setAnimationLoop(render);
-        }
+            renderer.setAnimationLoop(function (time, frame) {
+                
+                const delta = clock.getDelta();
 
-        function render(timestamp, frame) {
-            const delta = clock.getDelta();
+                // Actualizar animación del leñador
+                if (mixer) mixer.update(delta);
 
-            // Actualizar animación del leñador
-            if (mixer) mixer.update(delta);
+                // ========== HIT TEST ==========
+                if (frame) {
+                    
+                    const referenceSpace = renderer.xr.getReferenceSpace();
+                    const session = renderer.xr.getSession();
 
-            // ========== HIT TEST ==========
-            if (frame) {
-                const referenceSpace = renderer.xr.getReferenceSpace();
+                    if (hitTestSource === null && session !== null) {
+                        session.requestReferenceSpace('viewer').then(function (viewerSpace) {
+                            session.requestHitTestSource({ space: viewerSpace }).then(function (source) {
+                                hitTestSource = source;
+                            });
+                        });
+                    }
 
-                if (hitTestSource) {
-                    const hitTestResults = frame.getHitTestResults(hitTestSource);
+                    if (hitTestSource) {
+                        const hitTestResults = frame.getHitTestResults(hitTestSource);
 
-                    if (hitTestResults.length > 0) {
-                        const hit = hitTestResults[0];
-                        const hitPose = hit.getPose(referenceSpace);
+                        if (hitTestResults.length > 0) {
+                            const hit = hitTestResults[0];
+                            const hitPose = hit.getPose(referenceSpace);
 
-                        if (hitPose) {
-                            reticle.visible = true;
-                            reticle.matrix.fromArray(hitPose.transform.matrix);
+                            if (hitPose) {
+                                reticle.visible = true;
+                                reticle.matrix.fromArray(hitPose.transform.matrix);
+                            }
+                        } else {
+                            reticle.visible = false;
                         }
-                    } else {
-                        reticle.visible = false;
                     }
                 }
-            }
 
-            renderer.render(scene, camera);
+                renderer.render(scene, camera);
+            });
         }
 
     </script>
